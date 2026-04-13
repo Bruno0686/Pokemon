@@ -1,4 +1,5 @@
 import os, random
+from tkinter import *
 
 
 
@@ -16,6 +17,8 @@ def main():
   BG_MAGENTA = "\033[45m"
   BG_PRETO = "\033[40m"
   RESET = "\033[0m"
+
+
 
   vidaplayer = 300
   vidabot = 300
@@ -276,7 +279,7 @@ def main():
                   print("O ataque falhou!")
               else:
                   print("O ataque falhou!")
-                  
+      print(os.system("cls"))
       print(f"{BLUE}================================== {RESET}")
       print(f"{BLUE}  Bem-Vindo ao jogo de Pokemon! {RESET}  ")
       print(f"{BLUE}=================================={RESET}")
@@ -284,29 +287,36 @@ def main():
       print(f"Você escolheu {pokeplayer} como seu Pokemon inicial! e seus ataques são: ")
       print(f"{BLUE}=================================={RESET}")
       if pokeplayer == "bulbasaur":
-          print("1. Folha Navalha")
-          print("2. Chicote de Cipó")
-          print("3. Espelho de folha")
-          print("4. Derrubar")
+        print("1. Folha Navalha")
+        print("2. Chicote de Cipó")
+        print("3. Espelho de folha")
+        print("4. Derrubar")
       elif pokeplayer == "charmander":
-          print("1. Brasas")
-          print("2. Arranhão")
-          print("3. Lança Chamas")
-          print("4. Pulo Ardente")
+         print("1. Brasas")
+         print("2. Arranhão")
+         print("3. Lança Chamas")
+         print("4. Pulo Ardente")
       elif pokeplayer == "squirtle":
-          print("1. Jato de Água")
-          print("2. Mordida")
-          print("3. Hidro Bomba")
-          print("4. Água Benta")
+            print("1. Jato de Água")
+            print("2. Mordida")
+            print("3. Hidro Bomba")
+            print("4. Água Benta")
       print(f"{BLUE}================================== {RESET}")
       print(f"Sua vida: {GREEN}{vidaplayer}{RESET}")
       print(f"Vida do oponente:{RED} {vidabot}{RESET}")
       print(f"{BLUE}==================================`{RESET}")
       if vidaplayer <= 0:
-          print(f"{RED}Você perdeu! O oponente venceu a batalha!{RESET}")
-          break
+            print(f"{RED}Você perdeu! O oponente venceu a batalha!{RESET}")
+            break
       elif vidabot <= 0:
-          print(f"{GREEN}Parabéns! Você venceu a batalha!{RESET}")
-          break
+            print(f"{GREEN}Parabéns! Você venceu a batalha!{RESET}")
+            break
+      
+# janela = Tk()
+# janela.title("Pokemon Battle")
+# janela.geometry("400x300")
+# titulo = Label(janela, text="Bem-Vindo ao jogo de Pokemon!")
+# titulo.grid(row=0, column=0, columnspan=1, pady=10)
+# janela.mainloop()
 if __name__ == "__main__":
     main()    
