@@ -312,12 +312,6 @@ def main():
             print(f"{GREEN}Parabéns! Você venceu a batalha!{RESET}")
             break
       
-# janela = Tk()
-# janela.title("Pokemon Battle")
-# janela.geometry("400x300")
-# titulo = Label(janela, text="Bem-Vindo ao jogo de Pokemon!")
-# titulo.grid(row=0, column=0, columnspan=1, pady=10)
-# janela.mainloop()
 
 if __name__ == "__main__":
     main()    
