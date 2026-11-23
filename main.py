@@ -1,317 +1,353 @@
-import os, random
-from tkinter import *
+import random
+import tkinter as tk
+from tkinter import ttk
+
+VIDA_MAXIMA = 300
+ATRASO_OPONENTE_MS = 900  # pausa antes do oponente atacar
+
+# ---------- Cores da interface ----------
+COR_FUNDO = "#f4f6fb"
+COR_TEXTO = "#1f2937"
+COR_AZUL = "#1d4ed8"
+COR_VERDE = "#16a34a"
+COR_VERMELHO = "#dc2626"
+COR_CINZA = "#6b7280"
+
+# ---------- Dados dos Pokémons e ataques ----------
+# "dano": número fixo OU dicionário com o dano contra cada Pokémon
+# "chance": probabilidade de o ataque funcionar (padrão = 100%)
+# "cura": vida recuperada (ataques de cura não causam dano)
+POKEMONS = {
+    "bulbasaur": {
+        "nome": "Bulbasaur",
+        "cor": "#4caf50",
+        "ataques": [
+            {"nome": "Folha Navalha",
+             "dano": {"bulbasaur": 20, "charmander": 10, "squirtle": 50}},
+            {"nome": "Chicote de Cipó",
+             "dano": {"bulbasaur": 15, "charmander": 5, "squirtle": 55}},
+            {"nome": "Espelho de folha", "dano": 60, "chance": 0.5,
+             "msg_acerto": "O ataque refletiu e causou dano!"},
+            {"nome": "Derrubar", "dano": 30},
+        ],
+    },
+    "charmander": {
+        "nome": "Charmander",
+        "cor": "#f97316",
+        "ataques": [
+            {"nome": "Brasas",
+             "dano": {"bulbasaur": 80, "charmander": 20, "squirtle": 5}},
+            {"nome": "Arranhão", "dano": 25},
+            {"nome": "Lança Chamas",
+             "dano": {"bulbasaur": 65, "charmander": 20, "squirtle": 5}},
+            {"nome": "Pulo Ardente", "chance": 0.25,
+             "dano": {"bulbasaur": 100, "charmander": 50, "squirtle": 25}},
+        ],
+    },
+    "squirtle": {
+        "nome": "Squirtle",
+        "cor": "#0ea5e9",
+        "ataques": [
+            {"nome": "Jato de Água",
+             "dano": {"bulbasaur": 10, "charmander": 50, "squirtle": 20}},
+            {"nome": "Mordida", "dano": 30},
+            {"nome": "Hidro Bomba",
+             "dano": {"bulbasaur": 25, "charmander": 65, "squirtle": 25}},
+            {"nome": "Água Benta", "cura": 60, "chance": 1 / 3},
+        ],
+    },
+}
 
 
+class JogoPokemon:
+    def __init__(self, root):
+        self.root = root
+        root.title("Jogo de Pokémon")
+        root.geometry("700x660")
+        root.resizable(False, False)
+        root.configure(bg=COR_FUNDO)
 
+        self._configurar_estilos()
+
+        self.container = tk.Frame(root, bg=COR_FUNDO)
+        self.container.pack(fill="both", expand=True, padx=20, pady=20)
+
+        self.tela_escolha()
+
+    # ------------------------------------------------------------------
+    # Utilidades de interface
+    # ------------------------------------------------------------------
+    def _configurar_estilos(self):
+        estilo = ttk.Style()
+        estilo.theme_use("clam")  # permite colorir a barra de progresso
+        for nome, cor in (("Jogador", COR_VERDE), ("Oponente", COR_VERMELHO)):
+            estilo.configure(
+                f"{nome}.Horizontal.TProgressbar",
+                troughcolor="#d1d5db",
+                background=cor,
+                bordercolor="#d1d5db",
+                lightcolor=cor,
+                darkcolor=cor,
+            )
+
+    def _limpar(self):
+        for widget in self.container.winfo_children():
+            widget.destroy()
+
+    def _titulo(self):
+        tk.Label(
+            self.container,
+            text="Bem-Vindo ao jogo de Pokémon!",
+            font=("Helvetica", 18, "bold"),
+            bg=COR_AZUL,
+            fg="white",
+            pady=12,
+        ).pack(fill="x")
+
+    def _criar_painel(self, pai, coluna, titulo, estilo_barra):
+        quadro = tk.Frame(pai, bg="white", padx=12, pady=10,
+                          highlightbackground="#d1d5db", highlightthickness=1)
+        quadro.grid(row=0, column=coluna, padx=8, sticky="nsew")
+
+        tk.Label(quadro, text=titulo, font=("Helvetica", 12, "bold"),
+                 bg="white", fg=COR_TEXTO).pack(anchor="w")
+        lbl_vida = tk.Label(quadro, text="", font=("Helvetica", 11),
+                            bg="white", fg=COR_CINZA)
+        lbl_vida.pack(anchor="w", pady=(2, 6))
+        barra = ttk.Progressbar(quadro, length=260, maximum=VIDA_MAXIMA,
+                                style=f"{estilo_barra}.Horizontal.TProgressbar")
+        barra.pack(fill="x")
+        return lbl_vida, barra
+
+    def _log(self, mensagem, tag=None):
+        self.log_text.configure(state="normal")
+        self.log_text.insert("end", mensagem + "\n", tag)
+        self.log_text.see("end")
+        self.log_text.configure(state="disabled")
+
+    def _atualizar_barras(self):
+        vida_j = max(0, self.vida_jogador)
+        vida_b = max(0, self.vida_bot)
+        self.barra_jogador["value"] = vida_j
+        self.barra_bot["value"] = vida_b
+        self.lbl_vida_jogador.config(text=f"Vida: {vida_j}/{VIDA_MAXIMA}")
+        self.lbl_vida_bot.config(text=f"Vida: {vida_b}/{VIDA_MAXIMA}")
+
+    def _travar_botoes(self, travar):
+        estado = "disabled" if travar else "normal"
+        for botao in self.botoes_ataque:
+            botao.config(state=estado)
+
+    # ------------------------------------------------------------------
+    # Telas
+    # ------------------------------------------------------------------
+    def tela_escolha(self):
+        self._limpar()
+        self._titulo()
+
+        tk.Label(self.container, text="Escolha seu Pokémon inicial:",
+                 font=("Helvetica", 14), bg=COR_FUNDO,
+                 fg=COR_TEXTO).pack(pady=(40, 20))
+
+        for chave, dados in POKEMONS.items():
+            tk.Button(
+                self.container,
+                text=dados["nome"],
+                font=("Helvetica", 14, "bold"),
+                bg=dados["cor"],
+                fg="white",
+                activebackground=dados["cor"],
+                activeforeground="white",
+                relief="flat",
+                width=22,
+                pady=10,
+                cursor="hand2",
+                command=lambda c=chave: self.iniciar_batalha(c),
+            ).pack(pady=8)
+
+    def iniciar_batalha(self, escolha):
+        self.pokejogador = escolha
+        self.pokebot = random.choice(list(POKEMONS))
+        self.vida_jogador = VIDA_MAXIMA
+        self.vida_bot = VIDA_MAXIMA
+        self.fim = False
+
+        self.tela_batalha()
+
+        self._log(f"O oponente escolheu {POKEMONS[self.pokebot]['nome']} "
+                  "como seu Pokémon inicial!", "info")
+        self._log(f"Você escolheu {POKEMONS[self.pokejogador]['nome']} "
+                  "como seu Pokémon inicial!", "info")
+        self._log("Escolha um ataque para começar a batalha.", "info")
+        self._atualizar_barras()
+
+    def tela_batalha(self):
+        self._limpar()
+        self._titulo()
+
+        jogador = POKEMONS[self.pokejogador]
+        bot = POKEMONS[self.pokebot]
+
+        # --- Painéis de vida ---
+        painel = tk.Frame(self.container, bg=COR_FUNDO)
+        painel.pack(fill="x", pady=(20, 10))
+        painel.columnconfigure((0, 1), weight=1, uniform="col")
+
+        self.lbl_vida_jogador, self.barra_jogador = self._criar_painel(
+            painel, 0, f"Você: {jogador['nome']}", "Jogador")
+        self.lbl_vida_bot, self.barra_bot = self._criar_painel(
+            painel, 1, f"Oponente: {bot['nome']}", "Oponente")
+
+        # --- Botões de ataque ---
+        tk.Label(self.container, text="Escolha o ataque que deseja usar:",
+                 font=("Helvetica", 12), bg=COR_FUNDO,
+                 fg=COR_TEXTO).pack(pady=(10, 5))
+
+        grade = tk.Frame(self.container, bg=COR_FUNDO)
+        grade.pack(fill="x", padx=8)
+        grade.columnconfigure((0, 1), weight=1, uniform="atk")
+
+        self.botoes_ataque = []
+        for i, ataque in enumerate(jogador["ataques"]):
+            botao = tk.Button(
+                grade,
+                text=f"{i + 1}. {ataque['nome']}",
+                font=("Helvetica", 12, "bold"),
+                bg=jogador["cor"],
+                fg="white",
+                activebackground=jogador["cor"],
+                activeforeground="white",
+                relief="flat",
+                pady=8,
+                cursor="hand2",
+                command=lambda n=i: self.turno_jogador(n),
+            )
+            botao.grid(row=i // 2, column=i % 2, padx=6, pady=6, sticky="ew")
+            self.botoes_ataque.append(botao)
+
+        # --- Rodapé (botão de reiniciar) e histórico da batalha ---
+        self.rodape = tk.Frame(self.container, bg=COR_FUNDO)
+        self.rodape.pack(side="bottom", fill="x")
+        self.btn_reiniciar = tk.Button(
+            self.rodape, text="Jogar novamente", font=("Helvetica", 12, "bold"),
+            bg=COR_AZUL, fg="white", activebackground=COR_AZUL,
+            activeforeground="white", relief="flat", padx=20, pady=6,
+            cursor="hand2", command=self.tela_escolha)
+
+        area_log = tk.Frame(self.container, bg=COR_FUNDO)
+        area_log.pack(fill="both", expand=True, pady=(10, 10), padx=8)
+
+        scroll = tk.Scrollbar(area_log)
+        scroll.pack(side="right", fill="y")
+        self.log_text = tk.Text(
+            area_log, height=10, wrap="word", state="disabled",
+            font=("Helvetica", 11), bg="white", fg=COR_TEXTO, relief="flat",
+            highlightbackground="#d1d5db", highlightthickness=1,
+            yscrollcommand=scroll.set)
+        self.log_text.pack(side="left", fill="both", expand=True)
+        scroll.config(command=self.log_text.yview)
+
+        self.log_text.tag_configure("jogador", foreground=COR_AZUL)
+        self.log_text.tag_configure("oponente", foreground=COR_VERMELHO)
+        self.log_text.tag_configure("info", foreground=COR_CINZA)
+        self.log_text.tag_configure("vitoria", foreground=COR_VERDE,
+                                    font=("Helvetica", 12, "bold"))
+        self.log_text.tag_configure("derrota", foreground=COR_VERMELHO,
+                                    font=("Helvetica", 12, "bold"))
+
+    # ------------------------------------------------------------------
+    # Lógica da batalha
+    # ------------------------------------------------------------------
+    def turno_jogador(self, indice):
+        if self.fim:
+            return
+        self._travar_botoes(True)
+
+        ataque = POKEMONS[self.pokejogador]["ataques"][indice]
+        self._executar(ataque, eh_jogador=True)
+        self._atualizar_barras()
+
+        if self.vida_bot <= 0:
+            self._finalizar(venceu=True)
+            return
+
+        self.root.after(ATRASO_OPONENTE_MS, self.turno_oponente)
+
+    def turno_oponente(self):
+        if self.fim:
+            return
+        ataque = random.choice(POKEMONS[self.pokebot]["ataques"])
+        self._executar(ataque, eh_jogador=False)
+        self._atualizar_barras()
+
+        if self.vida_jogador <= 0:
+            self._finalizar(venceu=False)
+        else:
+            self._travar_botoes(False)
+
+    def _executar(self, ataque, eh_jogador):
+        quem = "Você" if eh_jogador else "O oponente"
+        tag = "jogador" if eh_jogador else "oponente"
+
+        self._log(f"{quem} usou {ataque['nome']}!", tag)
+
+        # O ataque pode falhar (Espelho de folha, Pulo Ardente, Água Benta)
+        chance = ataque.get("chance", 1.0)
+        if random.random() >= chance:
+            if "cura" in ataque:
+                self._log("O ataque falhou!", tag)
+            elif eh_jogador:
+                self._log("Você errou o ataque!", tag)
+            else:
+                self._log("O oponente errou o ataque!", tag)
+            return
+
+        # Ataque de cura
+        if "cura" in ataque:
+            if eh_jogador:
+                antes = self.vida_jogador
+                self.vida_jogador = min(VIDA_MAXIMA, antes + ataque["cura"])
+                ganho = self.vida_jogador - antes
+            else:
+                antes = self.vida_bot
+                self.vida_bot = min(VIDA_MAXIMA, antes + ataque["cura"])
+                ganho = self.vida_bot - antes
+            self._log(f"{quem} recuperou {ganho} de vida!", tag)
+            return
+
+        # Ataque de dano
+        alvo = self.pokebot if eh_jogador else self.pokejogador
+        dano = ataque["dano"]
+        if isinstance(dano, dict):
+            dano = dano[alvo]
+
+        if "msg_acerto" in ataque:
+            self._log(ataque["msg_acerto"], tag)
+        elif chance < 1.0:
+            self._log("O ataque acertou e causou dano!", tag)
+
+        if eh_jogador:
+            self.vida_bot -= dano
+            self._log(f"Causou {dano} de dano ao oponente.", tag)
+        else:
+            self.vida_jogador -= dano
+            self._log(f"Causou {dano} de dano em você.", tag)
+
+    def _finalizar(self, venceu):
+        self.fim = True
+        self._travar_botoes(True)
+        if venceu:
+            self._log("Parabéns! Você venceu a batalha!", "vitoria")
+        else:
+            self._log("Você perdeu! O oponente venceu a batalha!", "derrota")
+        self.btn_reiniciar.pack(pady=(5, 0))
 
 
 def main():
-  #cor de texto
-  RED = "\033[31m"
-  GREEN = "\033[32m"
-  PRETO = "\033[30m"
-  BLUE = "\033[34m"
-  #cor de fundo
-  BG_RED = "\033[41m"
-  BG_GREEN = "\033[42m"
-  BG_MAGENTA = "\033[45m"
-  BG_PRETO = "\033[40m"
-  RESET = "\033[0m"
+    root = tk.Tk()
+    JogoPokemon(root)
+    root.mainloop()
 
-
-
-  vidaplayer = 300
-  vidabot = 300
-  print(f"{BLUE}================================== {RESET}")
-  print(f"{BLUE}  Bem-Vindo ao jogo de Pokemon! {RESET}  ")
-  print(f"{BLUE}=================================={RESET}")
-  print(f"{PRETO}Escolha seu Pokemon inicial: {RESET} ")
-  pokeplayer=input(f"{PRETO}Escolha entre bulbasaur , charmander ou squirtle: {RESET}")
-  print(os.system("cls"))
-  if pokeplayer != "bulbasaur" and pokeplayer != "charmander" and pokeplayer != "squirtle":
-      print("Escolha apenas entre um dos três pokemons iniciais, ou tente escrever o nome completamente minusculo!")
-      print(os.system("cls"))
-      return
-  
-  pokebot=random.choice(["bulbasaur", "charmander", "squirtle"])
-  print(f"O oponente escolheu {pokebot} como seu Pokemon inicial!")
-  print(f"Você escolheu {pokeplayer} como seu Pokemon inicial! e seus ataques são: ")
-  if pokeplayer == "bulbasaur":
-      print("1. Folha Navalha")
-      print("2. Chicote de Cipó")
-      print("3. Espelho de folha")
-      print("4. Derrubar")
-  elif pokeplayer == "charmander":
-      print("1. Brasas")
-      print("2. Arranhão")
-      print("3. Lança Chamas")
-      print("4. Pulo Ardente")
-  elif pokeplayer == "squirtle":
-      print("1. Jato de Água")
-      print("2. Mordida")
-      print("3. Hidro Bomba")
-      print("4. Água Benta")
-  while True:
-      
-      ataqueplayer=int(input("Escolha o número do ataque que deseja usar: "))
-      if pokeplayer == "bulbasaur":
-          if ataqueplayer == 1:
-              print("Você usou Folha Navalha!")
-              if pokebot == "bulbasaur":
-                  vidabot -= 20
-                  
-              elif pokebot == "charmander":
-                  vidabot -= 10
-                  
-              elif pokebot == "squirtle":
-                  vidabot -=50
-          elif ataqueplayer == 2:
-              print("Você usou Chicote de Cipó!")
-              if pokebot == "bulbasaur":
-                  vidabot -= 15
-              elif pokebot == "charmander":
-                  vidabot -= 5
-              elif pokebot == "squirtle":
-                  vidabot -=55          
-          elif ataqueplayer == 3:
-              print("Você usou Espelho de folha")
-              resu=random.randint(1,2)
-              if resu == 1:
-                  print("O ataque refletiu e causou dano ao oponente!")
-                  vidabot -= ataqueplayer + (ataqueplayer * 0.5)
-              elif resu == 2:
-                  print("Você Errou o ataque!")
-          elif ataqueplayer == 4:
-              print("Você usou Derrubar!")
-              if pokebot == "bulbasaur" or pokebot == "charmander" or pokebot == "squirtle":
-                  vidabot -= 30
-          else:
-              print("Ataque inválido! Tente novamente.")
-              continue
-      elif pokeplayer == "charmander":
-          if ataqueplayer == 1:
-              print("Você usou Brasas!")
-              if pokebot == "bulbasaur":
-                  vidabot -= 80
-              elif pokebot == "charmander":
-                  vidabot -= 20
-              elif pokebot == "squirtle":
-                  vidabot -= 5
-          elif ataqueplayer == 2:
-              print("Você usou Arranhão!")
-              if pokebot =="charmander":
-                  
-                  vidabot -= 25
-                  print(f"A vida do oponente é {vidabot}")
-              elif pokebot == "bulbasaur":
-                  vidabot -= 25
-                  print(f"A vida do oponente é {vidabot}")
-              elif pokebot == "squirtle":
-                  
-                  vidabot -= 25
-                  print(f"A vida do oponente é {vidabot}")
-              
-          elif ataqueplayer == 3:
-              print("Você usou Lança Chamas!")
-              if pokebot == "bulbasaur":
-                  vidabot -= 65
-              elif pokebot == "charmander":
-                  vidabot -= 20
-              elif pokebot == "squirtle":
-                  vidabot -= 5
-              
-          elif ataqueplayer == 4:
-              print("Você usou Pulo Ardente!")
-              resu2=random.randint(1,4)
-              if resu2 == 1:
-                  print("O ataque acertou o oponente e causou dano!")
-                  if pokebot == "bulbasaur":
-                      vidabot -=100
-                  elif pokebot == "charmander":
-                      vidabot -= 50
-                  elif pokebot == "squirtle":
-                      vidabot -= 25
-              elif resu2 == 2 or resu2 == 3 or resu2 == 4:
-                  print("O ataque errou o oponente!")
-          else:
-              print("Ataque inválido! Tente novamente.")
-              continue
-      elif pokeplayer == "squirtle":
-          if ataqueplayer == 1:
-              print("Você usou Jato de Água!")
-              if pokebot == "bulbasaur":
-                  vidabot -= 10
-              elif pokebot == "charmander":
-                  vidabot -= 50
-              elif pokebot == "squirtle":
-                  vidabot -= 20
-          elif ataqueplayer == 2:
-              print("Você usou Mordida!")
-              if pokebot == "bulbasaur" or pokebot == "charmander" or pokebot == "squirtle":
-                  vidabot -= 30
-                  
-          elif ataqueplayer == 3:
-              print("Você usou Hidro Bomba!")
-              if pokebot == "bulbasaur":
-                  vidabot -= 25
-              elif pokebot == "charmander":
-                  vidabot -= 65
-              elif pokebot == "squirtle":
-                  vidabot -= 25
-          elif ataqueplayer == 4:
-              resu6=random.randint(1,3)
-              print("Você usou Água Benta!")
-              if resu6 == 1:
-                  
-                vidaplayer += 60
-              elif resu6 == 2 :
-                  print("O ataque falhou!")
-              else:
-                  print("O ataque falhou!")
-              
-          else:
-              print("Ataque inválido! Tente novamente.")
-              
-              continue
-      
-      ataquebot=random.randint(1,4)
-      if pokebot == "bulbasaur":
-          if ataquebot  == 1:
-              print("O oponente usou Folha Navalha!")
-              if pokeplayer == "bulbasaur":
-                  vidaplayer -= 20
-              elif pokeplayer == "charmander":
-                  vidaplayer -= 10
-              elif pokeplayer == "squirtle":
-                  vidaplayer -=50
-          elif ataquebot == 2:
-              print("O oponente usou Chicote de Cipó!")
-              if pokeplayer == "bulbasaur":
-                  vidaplayer -= 15
-              elif pokeplayer == "charmander":
-                  vidaplayer -= 5
-              elif pokeplayer == "squirtle":
-                  vidaplayer -=55
-                     
-          elif ataquebot == 3:
-              print("O oponente usou Espelho de folha")
-              resu3=random.randint(1,2)
-              if resu3 == 1:
-                  print("O ataque refletiu e causou dano a você!")
-                  vidaplayer -= ataqueplayer + (ataqueplayer * 0.5)
-              elif resu3 == 2:
-                  print("O oponente errou o ataque!")
-          elif ataquebot == 4:
-              print("O oponente usou Derrubar!")
-              if pokeplayer == "bulbasaur" or pokeplayer == "charmander" or pokeplayer == "squirtle":
-                  vidaplayer -= 30
-      elif pokebot == "charmander":
-          if ataquebot == 1:
-              print("O seu Oponente usou Brasas!")
-              if pokeplayer == "bulbasaur":
-                  vidaplayer -= 80
-              elif pokeplayer == "charmander":
-                  vidaplayer -= 20
-              elif pokeplayer == "squirtle":
-                  vidaplayer -= 5
-                  
-          elif ataquebot == 2:
-              print("O oponente usou Arranhão!")
-              if pokeplayer == "bulbasaur" or pokeplayer == "charmander" or pokeplayer == "squirtle":
-                  vidaplayer -= 25
-                  
-          elif ataquebot == 3:
-              print("O oponente usou Lança Chamas!")
-              if pokeplayer == "bulbasaur":
-                 
-                  vidaplayer -= 65
-              elif pokeplayer == "charmander":
-                  vidaplayer -= 20
-              elif pokeplayer == "squirtle":
-                  vidaplayer -= 5
-                  
-          elif ataquebot == 4:
-              print("O oponente usou Pulo Ardente!")
-              resu4=random.randint(1,4)
-              
-              if resu4 == 1:
-                  print("O ataque acertou você e causou dano!")
-                  if pokeplayer == "bulbasaur":
-                      vidaplayer -=100
-                  elif pokeplayer == "charmander":
-                      vidaplayer -= 50
-                  elif pokeplayer == "squirtle":
-                      vidaplayer -= 25
-              elif resu4 == 2 or resu4 == 3 or resu4 == 4:
-                  print("O ataque errou você!")
-                  
-      elif pokebot == "squirtle":
-          if ataquebot == 1:
-              print("O oponente usou Jato de Água!")
-              if pokeplayer == "bulbasaur":
-                  vidaplayer -= 10
-              elif pokeplayer == "charmander":
-                  vidaplayer -= 50
-              elif pokeplayer == "squirtle":
-                  vidaplayer -= 20
-                  
-          elif ataquebot == 2:
-              print("O oponente usou Mordida!")
-              if pokeplayer == "bulbasaur" or pokeplayer == "charmander" or pokeplayer == "squirtle":
-                  vidaplayer -= 30
-                  
-          elif ataquebot == 3:
-              print("O oponente usou Hidro Bomba!")
-              if pokeplayer == "bulbasaur":
-                  vidaplayer -= 25
-              elif pokeplayer == "charmander":
-                  vidaplayer -= 65
-              elif pokeplayer == "squirtle":
-                  vidaplayer -= 25
-                  
-          elif ataquebot == 4:
-              print("O oponente usou Água Benta!")
-              resu5=random.randint(1,3)
-              if resu5 == 1:
-                  
-                vidabot += 60
-              elif resu5 == 2:
-                  print("O ataque falhou!")
-              else:
-                  print("O ataque falhou!")
-      print(os.system("cls"))
-      print(f"{BLUE}================================== {RESET}")
-      print(f"{BLUE}  Bem-Vindo ao jogo de Pokemon! {RESET}  ")
-      print(f"{BLUE}=================================={RESET}")
-      print(f"O Seu oponente escolheu {pokebot} como seu Pokemon inicial!")
-      print(f"Você escolheu {pokeplayer} como seu Pokemon inicial! e seus ataques são: ")
-      print(f"{BLUE}=================================={RESET}")
-      if pokeplayer == "bulbasaur":
-        print("1. Folha Navalha")
-        print("2. Chicote de Cipó")
-        print("3. Espelho de folha")
-        print("4. Derrubar")
-      elif pokeplayer == "charmander":
-         print("1. Brasas")
-         print("2. Arranhão")
-         print("3. Lança Chamas")
-         print("4. Pulo Ardente")
-      elif pokeplayer == "squirtle":
-            print("1. Jato de Água")
-            print("2. Mordida")
-            print("3. Hidro Bomba")
-            print("4. Água Benta")
-      print(f"{BLUE}================================== {RESET}")
-      print(f"Sua vida: {GREEN}{vidaplayer}{RESET}")
-      print(f"Vida do oponente:{RED} {vidabot}{RESET}")
-      print(f"{BLUE}==================================`{RESET}")
-      if vidaplayer <= 0:
-            print(f"{RED}Você perdeu! O oponente venceu a batalha!{RESET}")
-            break
-      elif vidabot <= 0:
-            print(f"{GREEN}Parabéns! Você venceu a batalha!{RESET}")
-            break
-      
 
 if __name__ == "__main__":
-    main()    
+    main()
